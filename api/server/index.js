@@ -7,6 +7,8 @@ require('module-alias')({ base: path.resolve(__dirname, '..') });
 const { patchFetchPorts } = require('./utils/patchFetch');
 patchFetchPorts();
 
+const { forwardedAuthLogin } = require('~/strategies');
+
 const cors = require('cors');
 const axios = require('axios');
 const express = require('express');
@@ -100,6 +102,7 @@ const startServer = async () => {
   app.use(passport.initialize());
   passport.use(jwtLogin());
   passport.use(passportLogin());
+  passport.use('forwardedAuth', forwardedAuthLogin());
 
   /* LDAP Auth */
   if (process.env.LDAP_URL && process.env.LDAP_USER_SEARCH_BASE) {
@@ -112,6 +115,11 @@ const startServer = async () => {
 
   app.use('/oauth', routes.oauth);
   /* API Endpoints */
+  // Apply forwarded auth middleware globally if enabled
+  if (process.env.FORWARD_AUTH_ENABLED === 'true') {
+    app.use(require('~/server/middleware/requireForwardedAuth'));
+  }
+
   app.use('/api/auth', routes.auth);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);

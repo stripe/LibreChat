@@ -1,3 +1,7 @@
+// <stripe>
+const requireForwardedAuth = require('./requireForwardedAuth');
+// </stripe>
+
 const validatePasswordReset = require('./validatePasswordReset');
 const validateRegistration = require('./validateRegistration');
 const buildEndpointOption = require('./buildEndpointOption');
@@ -41,6 +45,7 @@ module.exports = {
   checkInviteUser,
   requireLdapAuth,
   requireLocalAuth,
+  requireForwardedAuth,
   canDeleteAccount,
   validateEndpoint,
   configMiddleware,

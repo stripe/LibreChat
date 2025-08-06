@@ -7,3 +7,13 @@ export function setAcceptLanguageHeader(value: string): void {
 export function setTokenHeader(token: string) {
   axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
 }
+
+// TODO make this configurable
+function setConfigurableHeader(): void {
+  if (axios.defaults && axios.defaults.headers && axios.defaults.headers.common) {
+    axios.defaults.headers.common['X-Requested-With'] = 'fetch';
+  }
+}
+
+// Initialize the configurable header
+setConfigurableHeader();

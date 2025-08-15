@@ -1,7 +1,17 @@
-require('dotenv').config();
+// <Stripe> Patch to allow different paths to the .env file
+// If process.env.ENV_FILE is unset, fallback to default behavior.
+require('dotenv').config({ path: process.env.ENV_FILE || undefined });
+// </Stripe>
+
 const fs = require('fs');
 const path = require('path');
 require('module-alias')({ base: path.resolve(__dirname, '..') });
+
+// <Stripe> Patch fetch to allow specific ports
+const patchFetch = require('./stripe/patch-fetch');
+patchFetch();
+// </Stripe>
+
 const cors = require('cors');
 const axios = require('axios');
 const express = require('express');
@@ -13,13 +23,17 @@ const mongoSanitize = require('express-mongo-sanitize');
 const { isEnabled, ErrorController } = require('@librechat/api');
 const { connectDb, indexSync } = require('~/db');
 const validateImageRequest = require('./middleware/validateImageRequest');
-const { jwtLogin, ldapLogin, passportLogin } = require('~/strategies');
+const { jwtLogin, ldapLogin, passportLogin, forwardedAuthLogin } = require('~/strategies');
 const initializeMCPs = require('./services/initializeMCPs');
 const configureSocialLogins = require('./socialLogins');
 const AppService = require('./services/AppService');
 const staticCache = require('./utils/staticCache');
 const noIndex = require('./middleware/noIndex');
 const routes = require('./routes');
+
+// <Stripe> Middleware to attach secure request context to each request
+const secureRequestContext = require('./stripe/secure-request-context');
+// </Stripe>
 
 const { PORT, HOST, ALLOW_SOCIAL_LOGIN, DISABLE_COMPRESSION, TRUST_PROXY } = process.env ?? {};
 
@@ -59,6 +73,10 @@ const startServer = async () => {
   app.use(cors());
   app.use(cookieParser());
 
+  // <Stripe> Middleware to attach secure request context to each request
+  app.use(secureRequestContext.middleware);
+  // </Stripe>
+
   if (!isEnabled(DISABLE_COMPRESSION)) {
     app.use(compression());
   } else {
@@ -78,6 +96,7 @@ const startServer = async () => {
   app.use(passport.initialize());
   passport.use(jwtLogin());
   passport.use(passportLogin());
+  passport.use('forwardedAuth', forwardedAuthLogin());
 
   /* LDAP Auth */
   if (process.env.LDAP_URL && process.env.LDAP_USER_SEARCH_BASE) {
@@ -90,6 +109,11 @@ const startServer = async () => {
 
   app.use('/oauth', routes.oauth);
   /* API Endpoints */
+  // Apply forwarded auth middleware globally if enabled
+  if (process.env.FORWARD_AUTH_ENABLED === 'true') {
+    app.use(require('~/server/middleware/requireForwardedAuth'));
+  }
+
   app.use('/api/auth', routes.auth);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);

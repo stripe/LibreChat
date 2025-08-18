@@ -66,7 +66,7 @@ function createValidateImageRequest(secureImageLinks) {
     // If forwarded auth is enabled and user is authenticated, validate using user ID
     if (process.env.FORWARD_AUTH_ENABLED === 'true' && req.user) {
       if (!isValidObjectId(req.user._id || req.user.id)) {
-        logger.warn('[validateImageRequest] Invalid User ID from forwarded auth');
+        logger.warn('[Stripe:validateImageRequest] Invalid User ID from forwarded auth');
         return res.status(403).send('Access Denied');
       }
 
@@ -75,10 +75,10 @@ function createValidateImageRequest(secureImageLinks) {
       const pathPattern = new RegExp(`^/images/${userId}/[^/]+$`);
 
       if (pathPattern.test(fullPath)) {
-        logger.debug('[validateImageRequest] Image request validated via forwarded auth');
+        logger.debug('[Stripe:validateImageRequest] Image request validated via forwarded auth');
         next();
       } else {
-        logger.warn('[validateImageRequest] Invalid image path for forwarded auth user');
+        logger.warn('[Stripe:validateImageRequest] Invalid image path for forwarded auth user');
         res.status(403).send('Access Denied');
       }
       return;

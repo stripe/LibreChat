@@ -98,6 +98,34 @@ const initializeClient = async ({ req, res, endpointOption }) => {
   /** @type {string} */
   const conversationId = req.body.conversationId;
 
+  // Get endpointConfig first to access useCustomStreaming flag
+  // Use the original endpoint from the request, not primaryAgent.endpoint (which can be undefined for ephemeral agents)
+  const requestEndpoint = req.body.endpoint;
+  let endpointConfig = req.app.locals[requestEndpoint];
+  if (!isAgentsEndpoint(requestEndpoint) && !endpointConfig) {
+    try {
+      endpointConfig = await getCustomEndpointConfig(requestEndpoint);
+      // Debug log to check if useCustomStreaming is in the endpoint config
+      logger.info(`[agents/initialize] DEBUG: Retrieved endpointConfig EARLY: requestEndpoint=${requestEndpoint}, primaryAgentEndpoint=${primaryAgent.endpoint}, useCustomStreaming=${endpointConfig?.useCustomStreaming}, hasEndpointConfig=${!!endpointConfig}`);
+    } catch (err) {
+      logger.error(
+        '[agents/initialize] Error getting custom endpoint config (early)',
+        err,
+      );
+    }
+  }
+
+  // Pass useCustomStreaming and other config from endpointConfig to endpointOption
+  const enhancedEndpointOption = { 
+    ...endpointOption,
+    ...(endpointConfig?.useCustomStreaming ? { useCustomStreaming: endpointConfig.useCustomStreaming } : {}),
+    // Also pass through baseURL and other endpoint config
+    ...(endpointConfig?.baseURL ? { endpointConfigBaseURL: endpointConfig.baseURL } : {}),
+    ...(endpointConfig?.apiKey ? { endpointConfigApiKey: endpointConfig.apiKey } : {}),
+  };
+
+  logger.info(`[agents/initialize] DEBUG: Enhanced endpointOption: useCustomStreaming=${enhancedEndpointOption?.useCustomStreaming}, baseURL=${enhancedEndpointOption?.endpointConfigBaseURL}`);
+
   const primaryConfig = await initializeAgent({
     req,
     res,
@@ -105,7 +133,7 @@ const initializeClient = async ({ req, res, endpointOption }) => {
     requestFiles,
     conversationId,
     agent: primaryAgent,
-    endpointOption,
+    endpointOption: enhancedEndpointOption,
     allowedProviders,
     isInitialAgent: true,
   });
@@ -144,17 +172,7 @@ const initializeClient = async ({ req, res, endpointOption }) => {
     }
   }
 
-  let endpointConfig = req.app.locals[primaryConfig.endpoint];
-  if (!isAgentsEndpoint(primaryConfig.endpoint) && !endpointConfig) {
-    try {
-      endpointConfig = await getCustomEndpointConfig(primaryConfig.endpoint);
-    } catch (err) {
-      logger.error(
-        '[api/server/controllers/agents/client.js #titleConvo] Error getting custom endpoint config',
-        err,
-      );
-    }
-  }
+  // endpointConfig already retrieved earlier for useCustomStreaming
 
   const sender =
     primaryAgent.name ??

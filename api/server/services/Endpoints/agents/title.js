@@ -31,6 +31,8 @@ const addTitle = async (req, { text, response, client }) => {
     let titlePromise;
     let abortController = new AbortController();
     if (client && typeof client.titleConvo === 'function') {
+      logger.info(`[agents/title] Calling client.titleConvo with: text="${text.substring(0, 50)}...", clientType=${client.constructor.name}, hasUseCustomStreaming=${client.options?.useCustomStreaming}`);
+      
       titlePromise = Promise.race([
         client
           .titleConvo({
@@ -43,6 +45,7 @@ const addTitle = async (req, { text, response, client }) => {
         timeoutPromise,
       ]);
     } else {
+      logger.warn('[agents/title] No client or titleConvo function available');
       return;
     }
 

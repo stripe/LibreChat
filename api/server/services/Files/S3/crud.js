@@ -275,6 +275,7 @@ async function getS3FileStream(_req, filePath) {
  */
 function needsRefresh(signedUrl, bufferSeconds) {
   try {
+    logger.info(`[Stripe:S3] Ran needsRefresh s3RefreshExpiryMs=${s3RefreshExpiryMs} signedUrl=${signedUrl}`);
     // Parse the URL
     const url = new URL(signedUrl);
 
@@ -364,6 +365,7 @@ async function getNewS3URL(currentURL) {
  * @returns {Promise<MongoFile[]>} The files with refreshed URLs if needed
  */
 async function refreshS3FileUrls(files, batchUpdateFiles, bufferSeconds = 3600) {
+  logger.info(`[Stripe:S3] Ran refreshS3FileUrls`);
   if (!files || !Array.isArray(files) || files.length === 0) {
     return files;
   }
@@ -414,6 +416,7 @@ async function refreshS3FileUrls(files, batchUpdateFiles, bufferSeconds = 3600) 
  * @returns {Promise<string>} The refreshed URL or the original URL if no refresh needed
  */
 async function refreshS3Url(fileObj, bufferSeconds = 3600) {
+  logger.info(`[Stripe:S3] Ran refreshS3Url`);
   if (!fileObj || fileObj.source !== FileSources.s3 || !fileObj.filepath) {
     return fileObj?.filepath || '';
   }

@@ -49,6 +49,27 @@ if (process.env.S3_REFRESH_EXPIRY_MS !== null && process.env.S3_REFRESH_EXPIRY_M
 const getS3Key = (basePath, userId, fileName) => `${basePath}/${userId}/${fileName}`;
 
 /**
+ * Redacts signed URL parameters for logging purposes.
+ * Keeps the part before ?X-Amz-Algorithm, or fully redacts if not found.
+ * 
+ * @param {string} url - The URL to redact
+ * @returns {string} The redacted URL
+ */
+function redactSignedUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return '[REDACTED_URL]';
+  }
+  
+  const algorithmIndex = url.indexOf('?X-Amz-Algorithm');
+  if (algorithmIndex !== -1) {
+    return url.substring(0, algorithmIndex);
+  }
+  
+  // If X-Amz-Algorithm is not found, fully redact
+  return '[REDACTED_URL]';
+}
+
+/**
  * Uploads a buffer to S3 and returns a signed URL.
  *
  * @param {Object} params
@@ -275,7 +296,7 @@ async function getS3FileStream(_req, filePath) {
  */
 function needsRefresh(signedUrl, bufferSeconds) {
   try {
-    logger.info(`[Stripe:S3] Ran needsRefresh s3RefreshExpiryMs=${s3RefreshExpiryMs} signedUrl=${signedUrl}`);
+    logger.info(`[Stripe:S3] Ran needsRefresh s3RefreshExpiryMs=${s3RefreshExpiryMs} signedUrl=${redactSignedUrl(signedUrl)}`);
     // Parse the URL
     const url = new URL(signedUrl);
 

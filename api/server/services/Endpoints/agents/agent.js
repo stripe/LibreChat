@@ -4,6 +4,7 @@ const {
   extractLibreChatParams,
   optionalChainWithEmptyCheck,
 } = require('@librechat/api');
+const { logger } = require('@librechat/data-schemas');
 const {
   ErrorTypes,
   EModelEndpoint,
@@ -59,8 +60,17 @@ const initializeAgent = async ({
       { model: agent.model },
       agent.model_parameters ?? { model: agent.model },
       isInitialAgent === true ? endpointOption?.model_parameters : {},
+      // Pass through custom streaming flag and endpoint config
+      isInitialAgent === true && endpointOption?.useCustomStreaming ? { useCustomStreaming: endpointOption.useCustomStreaming } : {},
+      isInitialAgent === true && endpointOption?.endpointConfigBaseURL ? { baseURL: endpointOption.endpointConfigBaseURL } : {},
+      isInitialAgent === true && endpointOption?.endpointConfigApiKey ? { apiKey: endpointOption.endpointConfigApiKey } : {},
     ),
   );
+
+  // Debug log to track configuration
+  if (isInitialAgent) {
+    logger.info(`[initializeAgent] DEBUG: Custom streaming config: agentId=${agent.id}, endpointOptionValue=${endpointOption?.useCustomStreaming}, modelOptionsValue=${_modelOptions.useCustomStreaming}, baseURL=${_modelOptions.baseURL}`);
+  }
 
   const { resendFiles, maxContextTokens, modelOptions } = extractLibreChatParams(_modelOptions);
 
@@ -184,15 +194,23 @@ const initializeAgent = async ({
     });
   }
 
-  return {
+  const finalAgent = {
     ...agent,
     tools,
     attachments,
     resendFiles,
     toolContextMap,
     useLegacyContent: !!options.useLegacyContent,
+    useCustomStreaming: _modelOptions.useCustomStreaming,
     maxContextTokens: Math.round((agentMaxContextTokens - maxTokens) * 0.9),
   };
+
+  // Debug log final agent configuration
+  if (isInitialAgent) {
+    logger.info(`[initializeAgent] DEBUG: Final agent config: agentId=${finalAgent.id}, useCustomStreaming=${finalAgent.useCustomStreaming}, type=${typeof finalAgent.useCustomStreaming}`);
+  }
+
+  return finalAgent;
 };
 
 module.exports = { initializeAgent };

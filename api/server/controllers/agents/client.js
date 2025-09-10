@@ -46,6 +46,7 @@ const { spendTokens, spendStructuredTokens } = require('~/models/spendTokens');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { getProviderConfig } = require('~/server/services/Endpoints');
 const BaseClient = require('~/app/clients/BaseClient');
+const CustomStreamClient = require('~/app/clients/CustomStreamClient');
 const { getRoleByName } = require('~/models/Role');
 const { loadAgent } = require('~/models/Agent');
 const { getMCPManager } = require('~/config');
@@ -132,6 +133,10 @@ class AgentClient extends BaseClient {
     this.artifactPromises = artifactPromises;
     /** @type {AgentClientOptions} */
     this.options = Object.assign({ endpoint: options.endpoint }, clientOptions);
+
+    // Debug log to show what's passed to AgentClient constructor
+    logger.info(`[AgentClient] DEBUG: Constructor options assigned: agentId=${this.options.agent?.id}, agentUseCustomStreaming=${this.options.agent?.useCustomStreaming}, modelParamsUseCustomStreaming=${this.options.agent?.model_parameters?.useCustomStreaming}, directUseCustomStreaming=${this.options.useCustomStreaming}`);
+
     /** @type {string} */
     this.model = this.options.agent.model_parameters.model;
     /** The key for the usage object's input tokens
@@ -611,6 +616,95 @@ class AgentClient extends BaseClient {
   }
 
   /** @type {sendCompletion} */
+  /**
+   * Handles custom streaming for endpoints that bypass LangChain agents
+   * @param {Object} params
+   * @param {Array} params.payload - The message payload
+   * @param {AbortController} params.abortController - Abort controller
+   */
+  async handleCustomStreaming({ payload, abortController }) {
+    logger.debug('[AgentClient] DEBUG: handleCustomStreaming started:', {
+      payloadLength: payload?.length,
+      hasAbortController: !!abortController,
+      agentConfig: {
+        id: this.options.agent.id,
+        provider: this.options.agent.provider,
+        model_parameters: this.options.agent.model_parameters
+      }
+    });
+
+    try {
+      if (!abortController) {
+        abortController = new AbortController();
+      }
+
+      // Extract endpoint configuration
+      const endpointConfig = this.options.agent.model_parameters;
+      
+      // Debug log to check baseURL
+      logger.info(`[AgentClient] DEBUG: CustomStreamClient config: endpointConfigBaseURL=${endpointConfig?.baseURL}, agentBaseURL=${this.options.agent?.baseURL}, agentProvider=${this.options.agent?.provider}`);
+      
+      // Create custom streaming client
+      const customClient = new CustomStreamClient(this.options.agent.api_key || 'default', {
+        baseURL: endpointConfig?.baseURL || this.options.agent?.baseURL,
+        model: endpointConfig?.model || this.options.agent?.model,
+        headers: endpointConfig?.headers || {},
+        proxy: this.options.proxy,
+        endpoint: this.options.endpoint,
+        res: this.options.res,
+        req: this.options.req,
+        // Pass title configuration for proper conversation titles
+        titleConvo: this.options.titleConvo,
+        endpointTokenConfig: this.options.endpointTokenConfig,
+        // Store the useCustomStreaming flag for reference
+        useCustomStreaming: this.options.agent.useCustomStreaming || this.options.agent.model_parameters?.useCustomStreaming,
+        // Pass streaming rate for real-time effect
+        streamRate: this.options.streamRate || 20,
+        // Pass stream buffer for tool completion pacing (like standard agents)
+        streamBuffer: this.options.streamBuffer || 1000,
+      });
+
+      // Store reference to custom client for title generation and other features
+      this.customClient = customClient;
+
+      // Set response message ID for proper event routing
+      customClient.responseMessageId = this.responseMessageId;
+
+      // Stream the completion (no onProgress needed - using SSE events)
+      const result = await customClient.sendCompletion(payload, {
+        abortController,
+      });
+
+      // Get the content parts (including tool calls) from the custom client
+      this.contentParts = customClient.getContentParts();
+
+      // Debug log to see what content parts we have
+      logger.info(`[AgentClient] DEBUG: Custom client returned ${this.contentParts.length} content parts:`);
+      this.contentParts.forEach((part, index) => {
+        logger.info(`[AgentClient] DEBUG: Part ${index}: type=${part.type}, hasToolCall=${!!part.tool_call}`);
+      });
+
+      // Do NOT add the final text result as it was already streamed in real-time
+      // via on_message_delta events. Adding it here would disrupt the carefully ordered content array.
+      logger.info(`[AgentClient] DEBUG: Preserving content ordering - NOT adding final text to avoid disruption. Final text length: ${result?.length || 0}`);
+      
+      // The content array already contains the properly ordered text chunks and tool calls
+      // from the streaming events, so we preserve that exact ordering.
+
+      logger.debug('[AgentClient] Custom streaming completed', {
+        contentPartsCount: this.contentParts.length,
+        hasToolCalls: this.contentParts.some(part => part.type === ContentTypes.TOOL_CALL)
+      });
+
+    } catch (error) {
+      logger.error('[AgentClient] Error in custom streaming:', error);
+      this.contentParts.push({
+        type: ContentTypes.ERROR,
+        [ContentTypes.ERROR]: `Custom streaming error: ${error.message}`,
+      });
+    }
+  }
+
   async sendCompletion(payload, opts = {}) {
     await this.chatCompletion({
       payload,
@@ -748,6 +842,18 @@ class AgentClient extends BaseClient {
   }
 
   async chatCompletion({ payload, abortController = null }) {
+    // Debug log to track the flow - check both possible locations
+    const streamingValue = this.options.agent.useCustomStreaming || this.options.agent.model_parameters?.useCustomStreaming;
+    logger.info(`[AgentClient] DEBUG: chatCompletion called: useCustomStreaming=${streamingValue}, agentLevel=${this.options.agent.useCustomStreaming}, modelParamsLevel=${this.options.agent.model_parameters?.useCustomStreaming}, type=${typeof streamingValue}`);
+
+    // Check if we should use custom streaming client - check both possible locations
+    if (this.options.agent.useCustomStreaming === true || this.options.agent.model_parameters?.useCustomStreaming === true) {
+      logger.info('[AgentClient] DEBUG: Using custom streaming!');
+      return await this.handleCustomStreaming({ payload, abortController });
+    }
+
+    logger.info(`[AgentClient] DEBUG: Using standard agent flow - value="${streamingValue}", type=${typeof streamingValue}, truthy=${!!streamingValue}`);
+
     /** @type {Partial<GraphRunnableConfig>} */
     let config;
     /** @type {ReturnType<createRun>} */
@@ -1070,6 +1176,70 @@ class AgentClient extends BaseClient {
    * @param {string} params.conversationId
    */
   async titleConvo({ text, abortController }) {
+    // Debug logging to understand the context - check both possible locations for useCustomStreaming
+    const useCustomStreaming = this.options.useCustomStreaming || this.options.agent?.useCustomStreaming || this.options.agent?.model_parameters?.useCustomStreaming;
+    logger.info(`[AgentClient] titleConvo called: useCustomStreaming=${useCustomStreaming}, hasCustomClient=${!!this.customClient}, hasRun=${!!this.run}`);
+    logger.info(`[AgentClient] titleConvo options: ${JSON.stringify({ 
+      useCustomStreamingDirect: this.options.useCustomStreaming,
+      useCustomStreamingAgent: this.options.agent?.useCustomStreaming,
+      useCustomStreamingModelParams: this.options.agent?.model_parameters?.useCustomStreaming,
+      hasCustomClient: !!this.customClient,
+      agentProvider: this.options.agent?.provider,
+      agentId: this.options.agent?.id 
+    })}`);
+
+    // If using custom streaming, delegate to the custom client
+    if (useCustomStreaming && this.customClient?.titleConvo) {
+      logger.info('[AgentClient] Using custom streaming client for title generation');
+      // Agents endpoint only passes text and abortController, need to extract other info
+      return await this.customClient.titleConvo({
+        text,
+        abortController, // Pass abortController to match agents pattern
+        // Extract conversationId and responseText from client context
+        conversationId: this.conversationId,
+        responseText: this.currentMessages?.[this.currentMessages.length - 1]?.text ?? '',
+      });
+    }
+
+    // If custom streaming is enabled but client is not available, create one for title generation
+    if (useCustomStreaming && !this.customClient) {
+      logger.info('[AgentClient] Custom streaming enabled but no client available, creating one for title generation');
+      try {
+        const endpointConfig = this.options.agent?.model_parameters || {};
+        const customClient = new (require('../../app/clients/CustomStreamClient'))(
+          this.options.agent?.api_key || 'default', 
+          {
+            baseURL: endpointConfig?.baseURL || this.options.agent?.baseURL,
+            model: endpointConfig?.model || this.options.agent?.model,
+            headers: endpointConfig?.headers || {},
+            proxy: this.options.proxy,
+            endpoint: this.options.endpoint,
+            req: this.options.req,
+            titleConvo: this.options.titleConvo,
+            endpointTokenConfig: this.options.endpointTokenConfig,
+            // Store the useCustomStreaming flag for reference
+            useCustomStreaming: this.options.agent?.useCustomStreaming || this.options.agent?.model_parameters?.useCustomStreaming,
+            // Pass stream buffer for tool completion pacing (like standard agents)
+            streamBuffer: this.options.streamBuffer || 1000,
+          }
+        );
+        
+        customClient.conversationId = this.conversationId;
+        customClient.user = this.user;
+        
+        logger.info('[AgentClient] Created custom client for title generation');
+        return await customClient.titleConvo({
+          text,
+          abortController, // Pass abortController to match agents pattern
+          conversationId: this.conversationId,
+          responseText: this.currentMessages?.[this.currentMessages.length - 1]?.text ?? '',
+        });
+      } catch (error) {
+        logger.error('[AgentClient] Error creating custom client for title generation:', error);
+        // Fall through to standard title generation
+      }
+    }
+
     if (!this.run) {
       throw new Error('Run not initialized');
     }

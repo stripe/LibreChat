@@ -15,6 +15,7 @@ const asyncLocalStorage = new AsyncLocalStorage();
  * Example: "x-stripe-account,x-user-id,authorization"
  */
 const FORWARDED_STRIPE_HEADERS = process.env.FORWARDED_STRIPE_HEADERS;
+const UNREDACTED_HEADERS = process.env.UNREDACTED_HEADERS;
 
 /**
  * Middleware to attach a secure request context to the request.
@@ -27,9 +28,25 @@ function middleware(req, _, next) {
   // Skip middleware if FORWARDED_STRIPE_HEADERS is not set
   if (!FORWARDED_STRIPE_HEADERS) {
     logger.warn(
-      '[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS environment variable is not set. Skipping secure request context middleware.',
+      '[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS environment variable is not set. Skipping forwarded headers middleware.',
     );
     return next();
+  }
+  let unredactedHeaders = [];
+  if (UNREDACTED_HEADERS) {
+    unredactedHeaders = UNREDACTED_HEADERS.split(',')
+      .map(name => name.trim().toLowerCase())
+      .filter(name => name.length > 0);
+  }
+
+  function maskHeader(headerName, headerValue) {
+    if (!headerValue) return '';
+    if (unredactedHeaders.length > 0) {
+      if (unredactedHeaders.includes(headerName.toLowerCase())) {
+        return headerValue;
+      }
+    }
+    return `[REDACTED ${headerValue.length} CHARACTERS]`;
   }
 
   // Parse header names from comma-separated list
@@ -38,21 +55,19 @@ function middleware(req, _, next) {
     .filter(name => name.length > 0);
 
   if (headerNames.length === 0) {
-    logger.warn('[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS is empty. Skipping secure request context middleware.');
+    logger.warn('[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS is empty. Skipping forwarded headers middleware.');
     return next();
   }
 
   // Extract headers from request
   const headers = {};
-  let foundHeaders = 0;
   
   for (const headerName of headerNames) {
     const headerValue = req.header(headerName);
     if (headerValue) {
       headers[headerName] = headerValue;
-      foundHeaders++;
       logger.info(
-        `[Stripe:forwardedHeaders] Added '${headerName}: ${maskHeader(headerValue)}' to the request context`,
+        `[Stripe:forwardedHeaders] Added '${headerName}: ${maskHeader(headerName, headerValue)}' to the request context`,
       );
     } else {
       logger.warn(`[Stripe:forwardedHeaders] No '${headerName}' found in the request headers`);
@@ -124,12 +139,10 @@ function attach(options = {}) {
     ...options,
     headers,
   };
+  
 }
 
-function maskHeader(header) {
-  if (!header) return '';
-  return `[REDACTED ${header.length} CHARACTERS]`;
-}
+
 
 module.exports = {
   middleware,

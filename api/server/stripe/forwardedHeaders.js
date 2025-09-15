@@ -1,5 +1,6 @@
 const { logger } = require('@librechat/data-schemas');
 const { AsyncLocalStorage } = require('async_hooks');
+const { redactHeader } = require('./utils');
 
 /**
  * AsyncLocalStorage is a new-ish Node feature (v13+) that allows you to attach
@@ -26,28 +27,7 @@ const UNREDACTED_HEADERS = process.env.UNREDACTED_HEADERS;
  */
 function middleware(req, _, next) {
   // Skip middleware if FORWARDED_STRIPE_HEADERS is not set
-  if (!FORWARDED_STRIPE_HEADERS) {
-    logger.warn(
-      '[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS environment variable is not set. Skipping forwarded headers middleware.',
-    );
-    return next();
-  }
-  let unredactedHeaders = [];
-  if (UNREDACTED_HEADERS) {
-    unredactedHeaders = UNREDACTED_HEADERS.split(',')
-      .map(name => name.trim().toLowerCase())
-      .filter(name => name.length > 0);
-  }
 
-  function maskHeader(headerName, headerValue) {
-    if (!headerValue) return '';
-    if (unredactedHeaders.length > 0) {
-      if (unredactedHeaders.includes(headerName.toLowerCase())) {
-        return headerValue;
-      }
-    }
-    return `[REDACTED ${headerValue.length} CHARACTERS]`;
-  }
 
   // Parse header names from comma-separated list
   const headerNames = FORWARDED_STRIPE_HEADERS.split(',')
@@ -67,7 +47,7 @@ function middleware(req, _, next) {
     if (headerValue) {
       headers[headerName] = headerValue;
       logger.info(
-        `[Stripe:forwardedHeaders] Added '${headerName}: ${maskHeader(headerName, headerValue)}' to the request context`,
+        `[Stripe:forwardedHeaders] Added '${headerName}: ${redactHeader(headerName, headerValue)}' to the request context`,
       );
     } else {
       logger.warn(`[Stripe:forwardedHeaders] No '${headerName}' found in the request headers`);

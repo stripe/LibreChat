@@ -1,6 +1,6 @@
 const { logger } = require('@librechat/data-schemas');
 const nodeFetch = require('node-fetch');
-const secureRequestContext = require('./secure-request-context');
+const stripeForwardedHeaders = require('./forwardedHeaders');
 const { ProxyAgent } = require('proxy-agent');
 
 /**
@@ -41,8 +41,8 @@ function fetchLike(url, options = {}) {
     options = { ...options, agent: new ProxyAgent() };
   }
 
-  // Attach the secure request context to the options
-  options = secureRequestContext.attach(options);
+  // Attach stripe forwarded headers to the options
+  options = stripeForwardedHeaders.attach(options);
 
   // Log the request
   logger.info(`[Stripe:patchFetch] fetch request ${formatRequest(url, options)}`);

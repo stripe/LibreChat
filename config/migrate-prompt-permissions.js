@@ -46,6 +46,9 @@ async function migrateToPromptGroupPermissions({ dryRun = true, batchSize = 100 
   const db = mongoose.connection.db;
   if (db) {
     await ensureCollectionExists(db, 'aclentries');
+    // <Stripe> Ensure the groups collection also exists
+    await ensureCollectionExists(db, 'groups');
+    // </Stripe>
   }
 
   // Verify required roles exist

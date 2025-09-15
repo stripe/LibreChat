@@ -78,6 +78,9 @@ export async function checkPromptPermissionsMigration({
     const db = mongoose.connection.db;
     if (db) {
       await ensureCollectionExists(db, 'aclentries');
+      // <Stripe> Ensure the groups collection also exists
+      await ensureCollectionExists(db, 'groups');
+      // </Stripe>
     }
 
     // Verify required roles exist

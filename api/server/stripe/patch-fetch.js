@@ -46,7 +46,7 @@ function fetchLike(url, options = {}) {
   options = stripeForwardedHeaders.attach(options);
 
   // Log the request
-  logger.info(`[Stripe:patchFetch] CANONICAL-FETCH-REQUEST ${formatRequest(url, options)}`);
+  logger.info(`[Stripe:patchFetch] CANONICAL-LIBRECHAT-FETCH-REQUEST ${formatRequest(url, options)}`);
 
   // Use node-fetch to perform the request
   return nodeFetch(url, options);

@@ -16,8 +16,6 @@ const asyncLocalStorage = new AsyncLocalStorage();
  * Example: "x-stripe-account,x-user-id,authorization"
  */
 const FORWARDED_STRIPE_HEADERS = process.env.FORWARDED_STRIPE_HEADERS;
-const UNREDACTED_HEADERS = process.env.UNREDACTED_HEADERS;
-
 /**
  * Middleware to attach a secure request context to the request.
  * @param {import('express').Request} req - The request object.

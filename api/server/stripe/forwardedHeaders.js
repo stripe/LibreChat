@@ -24,7 +24,6 @@ const FORWARDED_STRIPE_HEADERS = process.env.FORWARDED_STRIPE_HEADERS;
  * @returns {void}
  */
 function middleware(req, _, next) {
-  // Skip middleware if FORWARDED_STRIPE_HEADERS is not set
 
 
   // Parse header names from comma-separated list
@@ -34,7 +33,8 @@ function middleware(req, _, next) {
       .map(name => name.trim())
       .filter(name => name.length > 0);
   }
-
+  
+  // Skip middleware if FORWARDED_STRIPE_HEADERS is not set
   if (headerNames.length === 0) {
     logger.warn('[Stripe:forwardedHeaders] FORWARDED_STRIPE_HEADERS is empty. Skipping forwarded headers middleware.');
     return next();

@@ -2,7 +2,7 @@ const { logger } = require('@librechat/data-schemas');
 const nodeFetch = require('node-fetch');
 const stripeForwardedHeaders = require('./forwardedHeaders');
 const { ProxyAgent } = require('proxy-agent');
-const { redactHeader } = require('./utils');
+const { redactValue } = require('./utils');
 
 /**
  * Patches the global fetch to use node-fetch instead of undici
@@ -61,7 +61,7 @@ function formatRequest(url, options) {
   fields.push(`url="${formatUrl(url)}"`);
   fields.push(`headers=${JSON.stringify(formatHeaders(options.headers || new Headers()))}`);
   if (options.body) {
-    fields.push(`body="${redactHeader('body', options.body)}"`);
+    fields.push(`body="${redactValue('body', options.body)}"`);
   }
   return fields.join(' ');
 }
@@ -69,7 +69,7 @@ function formatRequest(url, options) {
 function formatUrl(url) {
   const urlObj = new URL(url);
   urlObj.searchParams.forEach((value, key) => {
-    urlObj.searchParams.set(key, redactHeader(key, value));
+    urlObj.searchParams.set(key, redactValue(key, value));
   });
   return urlObj.toString();
 }
@@ -77,7 +77,7 @@ function formatUrl(url) {
 function formatHeaders(headers) {
   const obj = {};
   for (const [key, value] of headers) {
-    obj[key] = redactHeader(key, value);
+    obj[key] = redactValue(key, value);
   }
   return obj;
 }

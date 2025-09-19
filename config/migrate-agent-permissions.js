@@ -1,3 +1,7 @@
+// <Stripe>
+const { seedDatabase } = require('~/models');
+// </Stripe>
+
 const path = require('path');
 const { logger } = require('@librechat/data-schemas');
 const { ensureRequiredCollectionsExist } = require('@librechat/api');
@@ -23,6 +27,10 @@ async function migrateAgentPermissionsEnhanced({ dryRun = true, batchSize = 100 
   if (db) {
     await ensureRequiredCollectionsExist(db);
   }
+
+  // <Stripe>
+  await seedDatabase();
+  // </Stripe>
 
   // Verify required roles exist
   const ownerRole = await findRoleByIdentifier(AccessRoleIds.AGENT_OWNER);
